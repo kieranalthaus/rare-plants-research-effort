@@ -1,1 +1,1 @@
-Rare Plant Output
+Rare Plant Outputs
