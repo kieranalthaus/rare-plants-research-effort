@@ -1,0 +1,82 @@
+---
+title: "genbank-scrape"
+author: "Kieran Althaus"
+date: "5/24/2022"
+output: html_document
+---
+
+```{r packages}
+library(rvest);library(tidyverse)
+```
+
+```{r load in search list}
+searchlist <- read_csv('searchList.csv')
+```
+
+```{r prepare urls}
+searchlist$genbank <- gsub(pattern = " ",
+                           replacement = "+",
+                           searchlist$`Accepted Name`)
+searchlist$genbank <- paste0("https://www.ncbi.nlm.nih.gov/nuccore/?term=(%22",searchlist$genbank,"%22%5BOrganism%5D+OR+%22",searchlist$genbank,"%22%5BAll+Fields%5D)+AND+plants%5Bfilter%5D", sep = "")
+```
+
+```{r format dataset}
+#Change that retarded first column name. Don't even know how it got to be like that...
+colnames(searchlist)[colnames(searchlist) %in%
+                       '...1'] <- "accepted"
+# 
+i = 1
+for (i in 1:nrow(searchlist)) {
+  if ((searchlist$`Scientific Name`[i] == searchlist$`Accepted Name`[i]) == TRUE) {
+    searchlist$accepted[i] <- "1"
+  } else {
+  searchlist$accepted[i] <- "0"
+  }
+}
+
+list2 <- searchlist %>%
+  filter(accepted == "1")
+out <- list2
+out$seqs <- NA
+```
+
+```{r genbank loop}
+i = 1
+for (i in 1986:nrow(out)) {
+  
+  #Get the heading2 class from the webpage
+  try(tmp <- list2$genbank[i] %>%
+    read_html() %>%
+    html_nodes("h2") %>%
+    html_text(),silent = TRUE)
+
+  #If there are only two sets of stirngs, indicating no sequences, then put a 0 in the seqs column, if not, proceed and extract the real result
+  try(if ((length(tmp)=="2") == TRUE) {
+    #If there are only two sttrings in tmp, then rescrape to see if there are really zero, or just one sequence
+    tmp <- list2$genbank[i] %>%
+      read_html() %>%
+      html_nodes("span") %>%
+      html_text()
+    #Extract text indicative of whether it has 0 or 1 sequences
+    nif <- str_subset(tmp,"No items found.")
+    #If the length of that object string is 0, then there is one sequence on genbank. If ther length is 1, then I successfully extracted the text "No items found," indicating that there are no sequences for this taxon
+    if ((length(nif) == "1") == TRUE) {
+      out$seqs[i] <- "0"
+    } else {
+      out$seqs[i] <- "1"
+    }
+    rm(tmp) #Remove object
+    rm(nif) #Remove object
+  } else {
+    #If there are three sets of stirngs, then get the one with the numbers and extract the number of sequences from it
+  out$seqs[i] <- word(tmp[2], str_count(tmp[2],"\\S+"))
+  rm(tmp)
+  }, silent = TRUE)
+    print(i)
+}
+```
+
+
+```{r}
+write_csv(out, "genbank_rawdata_20220525.csv")
+```
